@@ -117,9 +117,31 @@ class MainTests(unittest.TestCase):
         self.assertIn("services.md", brief)
         self.assertIn("services-1", brief)
         self.assertIn("זמן ייחוס לתרגול", brief)
-        self.assertIn("תאריך פרסום: 2025-03-10T08:00:00+02:00", brief)
+        self.assertIn("10.03.2025, 08:00 (UTC+02:00)", brief)
+        self.assertIn("10.03.2025, 12:00 (UTC+02:00)", brief)
         self.assertIn("מקור: נתון מדומה שנכתב לצורך התרגול", brief)
         self.assertNotIn("הרחבת מלאי תרגול ישנה", brief)
+        self.assertNotIn("החברה מסומנת כחברה בדיונית", brief)
+        self.assertIn(
+            "נתוני תרגול מדומים",
+            brief,
+        )
+        self.assertIn(
+            "חברה בדיונית שמוכרת ציוד משרדי",
+            brief,
+        )
+        self.assertIn(
+            "הרחיבה את מגוון המוצרים באתר ומצפה לעלייה במספר ההזמנות.\n\n"
+            "תאריך פרסום:",
+            brief,
+        )
+        self.assertIn(
+            "אוטומציה של שירות לקוחות\n\n"
+            "חיבור פניות מהאתר למערכת CRM, סיווג הפניות והעברתן לנציג המתאים.\n"
+            "מתאים לחברות המתמודדות עם עומס פניות וזמני תגובה ארוכים.\n\n"
+            "מקור: services.md",
+            brief,
+        )
 
     def test_brief_reports_no_recent_updates(self):
         company_info = dict(COMPANIES["אופק ציוד משרדי"])
@@ -135,6 +157,48 @@ class MainTests(unittest.TestCase):
 
         self.assertIn("לא נמצאו עדכונים מתאימים בחלון הזמן שנבדק.", brief)
         self.assertNotIn("לא התרחשו חדשות בעולם", brief)
+
+    def test_internal_knowledge_service_has_relevant_questions(self):
+        results = main.search_chunks("עובדים מתקשים למצוא נהלים", main.chunks)
+        brief = main.build_brief(
+            "אופק ציוד משרדי",
+            "עובדים מתקשים למצוא נהלים",
+            COMPANIES["אופק ציוד משרדי"],
+            results,
+            LIMITATIONS,
+        )
+
+        self.assertEqual(results[0]["chunk"]["title"], "עוזר ידע פנים־ארגוני")
+        self.assertIn("באילו מסמכים או נהלים", brief)
+        self.assertIn("האם חשוב שהתשובות יכללו הפניה למסמך המקור?", brief)
+        self.assertNotIn("זמני המענה הנוכחיים", brief)
+        self.assertNotIn("זמן ההמתנה", brief)
+
+    def test_sales_preparation_service_has_relevant_questions(self):
+        results = main.search_chunks("הכנה לפגישות מכירה מידע לקוח", main.chunks)
+        brief = main.build_brief(
+            "אופק ציוד משרדי",
+            "הכנה לפגישת מכירה",
+            COMPANIES["אופק ציוד משרדי"],
+            results,
+            LIMITATIONS,
+        )
+
+        self.assertEqual(results[0]["chunk"]["title"], "הכנה לפגישות מכירה")
+        self.assertIn("איזה מידע פנימי על הלקוח זמין לקראת הפגישה?", brief)
+        self.assertNotIn("זמני המענה הנוכחיים", brief)
+
+    def test_no_matching_service_gets_general_questions(self):
+        brief = main.build_brief(
+            "אופק ציוד משרדי",
+            "גידול עגבניות",
+            COMPANIES["אופק ציוד משרדי"],
+            [],
+            LIMITATIONS,
+        )
+
+        self.assertIn("איזה אתגר או צורך תרצו לקדם בפגישה?", brief)
+        self.assertNotIn("זמן ההמתנה", brief)
 
     def test_meeting_goal_is_not_presented_as_verified_fact(self):
         brief = main.build_brief(

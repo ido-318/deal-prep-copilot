@@ -84,6 +84,17 @@ def filter_recent_updates(updates, now):
     return recent_updates
 
 
+def format_datetime(value):
+    offset = value.utcoffset()
+    if offset is None:
+        raise ValueError("התאריך חייב לכלול אזור זמן.")
+
+    total_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    hours, minutes = divmod(abs(total_minutes), 60)
+    return f"{value:%d.%m.%Y, %H:%M} (UTC{sign}{hours:02d}:{minutes:02d})"
+
+
 def build_brief(company, meeting_goal, company_info, results, limitations):
     """בונה תדרוך Markdown על סמך נתוני המאגר ותוצאות החיפוש בלבד."""
     lines = [
@@ -92,15 +103,13 @@ def build_brief(company, meeting_goal, company_info, results, limitations):
         f"**מטרת הפגישה כפי שהוזנה (טרם אומתה):** {meeting_goal}",
         "",
         "> נתוני תרגול מדומים; ללא חיפוש חי ברשת וללא מודל שפה.",
-        f"> זמן ייחוס לתרגול: {REFERENCE_NOW.isoformat()} (לא זמן חדשות חי).",
+        f"> זמן ייחוס לתרגול: {format_datetime(REFERENCE_NOW)} (לא זמן חדשות חי).",
     ]
 
     if company_info is None:
         lines.extend(["", "## מידע על החברה", "החברה אינה קיימת במאגר התרגול."])
     else:
         lines.extend(["", "## רקע על החברה"])
-        if company_info.get("is_fictional"):
-            lines.append("החברה מסומנת כחברה בדיונית במאגר התרגול.")
         lines.append(company_info["description"])
 
         updates = filter_recent_updates(company_info.get("updates", []), REFERENCE_NOW)
@@ -109,8 +118,11 @@ def build_brief(company, meeting_goal, company_info, results, limitations):
             for update in updates:
                 lines.extend([
                     f"### {update['title']}",
+                    "",
                     update["summary"],
-                    f"תאריך פרסום: {update['published_at']}",
+                    "",
+                    f"תאריך פרסום: {format_datetime(datetime.fromisoformat(update['published_at']))}",
+                    "",
                     f"מקור: {update['source']}",
                 ])
         else:
@@ -128,8 +140,10 @@ def build_brief(company, meeting_goal, company_info, results, limitations):
             chunk = result["chunk"]
             lines.extend([
                 f"### {chunk['title']}",
-                f"מקור: {chunk['source']} | מזהה מקטע: {chunk['id']}",
+                "",
                 chunk["text"],
+                "",
+                f"מקור: {chunk['source']} | מזהה מקטע: {chunk['id']}",
             ])
 
     lines.extend(["", "## מגבלות מהמסמך הפנימי"])
@@ -143,13 +157,46 @@ def build_brief(company, meeting_goal, company_info, results, limitations):
     else:
         lines.append("לא נמצאו מגבלות במסמך הפנימי.")
 
-    lines.extend([
-        "",
-        "## מידע שכדאי לברר בפגישה",
-        "- מהו זמן ההמתנה כיום, ובאילו שעות או ערוצים הוא בולט?",
-        "- כמה פניות מתקבלות, ומהו עומס הפניות בשעות השיא?",
-        "- כיצד פניות מטופלות כיום, ומהו היעד הרצוי לזמן המענה?",
-    ])
+    questions_by_service = {
+        "אוטומציה של שירות לקוחות": [
+            "באילו ערוצים מתקבלות פניות, וכיצד הן מועברות כיום לנציגים?",
+            "מהו היקף הפניות ומהם זמני המענה הנוכחיים בשעות שונות?",
+            "איזה יעד למיון ולהעברת פניות תרצו לבחון?",
+        ],
+        "עוזר ידע פנים־ארגוני": [
+            "באילו מסמכים או נהלים העובדים מתקשים למצוא מידע?",
+            "כיצד העובדים מחפשים מידע כיום, ואילו קשיים הם נתקלים בהם?",
+            "האם חשוב שהתשובות יכללו הפניה למסמך המקור?",
+        ],
+        "הכנה לפגישות מכירה": [
+            "איזה מידע פנימי על הלקוח זמין לקראת הפגישה?",
+            "אילו נושאים או הזדמנויות תרצו לבדוק בשיחה?",
+            "אילו שאלות ומקורות חשוב לכלול בתדרוך?",
+        ],
+    }
+
+    questions = []
+    for result in results:
+        title = result["chunk"]["title"]
+        service_questions = questions_by_service.get(title)
+        if service_questions is None:
+            service_questions = [
+                "איזה אתגר תרצו לפתור, וכיצד הוא מטופל כיום?",
+                "איזו תוצאה תרצו לבחון, ואיזה מידע יעזור להעריך אותה?",
+            ]
+        for question in service_questions:
+            if question not in questions:
+                questions.append(question)
+
+    if not questions:
+        questions = [
+            "איזה אתגר או צורך תרצו לקדם בפגישה?",
+            "כיצד הנושא מטופל כיום, ומה תרצו לשפר או לברר?",
+            "איזה מידע או דוגמאות יעזרו להבין את המצב?",
+        ]
+
+    lines.extend(["", "## שאלות שכדאי לברר בפגישה"])
+    lines.extend(f"- {question}" for question in questions)
 
     return "\n".join(lines)
 
